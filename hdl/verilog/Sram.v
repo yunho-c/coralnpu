@@ -42,6 +42,11 @@ module Sram #(
     end
   endgenerate
 
+  // Note on RTSEL/WTSEL: Different macro sizes require different timing control settings.
+  // The simulation models check these pins and may error out if they don't match recommended values.
+  // For synthesized netlist simulation (GLS), the ifdef's area already evaluated and cannot be changed
+  // Use +define+TSMC_NO_TESTPINS_DEFAULT_VALUE_CHECK in VCS, to skip checks in simulation
+  // RTSEL and WTSEL for synthesis may be required for tuning
   if (NUM_ENTRIES == 2048) begin
     TS1N12FFCLLMBLVTD2048X128M4SWBSHO u_sram (
         .BIST(1'b0),
@@ -93,7 +98,7 @@ module Sram #(
         .WTSEL(2'b0)
 `else
         .RTSEL(2'b1),
-        .WTSEL(2'b1)
+        .WTSEL(2'b0)
 `endif
     );
   end else begin
