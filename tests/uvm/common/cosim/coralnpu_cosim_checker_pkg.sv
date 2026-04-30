@@ -222,7 +222,8 @@ package coralnpu_cosim_checker_pkg;
       dpi_cfg_s = {<<32{
           itcm_start_address,
           itcm_length,
-          initial_misa_value
+          initial_misa_value,
+          32'd1 // M3
       }};
 
       if (mpact_init() != 0)
