@@ -39,7 +39,7 @@ def _get_math_result(x: np.array, y: np.array, symbol: str, dtype=None):
         return np.subtract(x, y, dtype=dtype)
     elif symbol == "mul" or symbol == "fmul":
         return np.multiply(x, y, dtype=dtype)
-    elif symbol == "div" or symbol == "fdiv":
+    elif symbol == "fdiv":
         orig_settings = np.seterr(divide="ignore")
         divide_output = np.divide(x, y, dtype=dtype)
         np.seterr(**orig_settings)
