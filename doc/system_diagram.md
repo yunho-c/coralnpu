@@ -1,10 +1,6 @@
 # CoralNPU Chisel System Diagram
 
-This document summarizes the theory of operation of the Chisel hardware under
-`hdl/chisel`. It reflects the current Chisel subsystem, where the generated SoC
-contains a TL-UL crossbar, a `CoreTlul` CoralNPU core instance, local TCMs,
-debug/CSR access, DMA, SPI, GPIO, CLINT/PLIC interrupt blocks, internal SRAM,
-and special bridges to DDR and ISP-facing interfaces.
+This document summarizes the theory of operation of the Chisel hardware under `hdl/chisel`. It reflects the current Chisel subsystem, where the generated SoC contains a TL-UL crossbar, a `CoreTlul` CoralNPU core instance, local TCMs, debug/CSR access, DMA, SPI, GPIO, CLINT/PLIC interrupt blocks, internal SRAM, and special bridges to DDR and ISP-facing interfaces.
 
 ## Source Map
 
@@ -202,10 +198,7 @@ flowchart LR
 
 ## Address Map and Connectivity
 
-The crossbar is generated from `CrossbarConfig`. Each host first enters the
-crossbar at its native width and clock domain, then the xbar wraps integrity,
-crosses to the main domain if needed, and width-converts to the common 128-bit
-TL-UL fabric.
+The crossbar is generated from `CrossbarConfig`. Each host first enters the crossbar at its native width and clock domain, then the xbar wraps integrity, crosses to the main domain if needed, and width-converts to the common 128-bit TL-UL fabric.
 
 | Device | Address range | Width | Clock domain | Notes |
 | --- | ---: | ---: | --- | --- |
@@ -231,50 +224,28 @@ TL-UL fabric.
 
 ### 1. Reset, boot, and clock gating
 
-`CoreTlul` exposes active-low reset, clock, boot address, status, IRQ, and debug
-ports at the subsystem boundary. Internally it instantiates `CoreAxi`, which
-synchronizes reset through `RstSync`, captures `boot_addr` into `CoreCSR` on the
-first clock after reset, and uses `CoreCSR.pcStart` as CSR input 0 to seed the
-fetch PC.
+`CoreTlul` exposes active-low reset, clock, boot address, status, IRQ, and debug ports at the subsystem boundary. Internally it instantiates `CoreAxi`, which synchronizes reset through `RstSync`, captures `boot_addr` into `CoreCSR` on the first clock after reset, and uses `CoreCSR.pcStart` as CSR input 0 to seed the fetch PC.
 
-`CoreCSR` starts with reset and clock-gate bits set. Software or an external
-host can write the CoreCSR window through the core's TL device port to release
-reset, update the start PC, read status, or issue debug-module requests. The
-clock gate is enabled whenever interrupts are pending, debug halt is requested,
-or the CSR says the core should run and the scalar core is not in WFI.
+`CoreCSR` starts with reset and clock-gate bits set. Software or an external host can write the CoreCSR window through the core's TL device port to release reset, update the start PC, read status, or issue debug-module requests. The clock gate is enabled whenever interrupts are pending, debug halt is requested, or the CSR says the core should run and the scalar core is not in WFI.
 
 ### 2. TL-UL subsystem routing
 
 The subsystem is data-driven:
 
-- `SoCChiselConfig` lists Chisel instances, their host/device TL-UL port names,
-  and top-level non-TL ports.
-- `CrossbarConfig` lists TL-UL hosts, devices, address ranges, widths, clock
-  domains, and allowed host-to-device connectivity.
-- `CoralNPUXbar` wraps each host and device with TL-UL integrity generation and
-  checking, inserts `TlulFifoAsync` for non-main clock domains, and inserts
-  `TlulWidthBridge` when a port is narrower than the 128-bit common fabric.
-- Each host gets a `TlulSocket1N`; each multi-host target gets a
-  `TlulSocketM1`. Address decode selects the target device, otherwise the
-  socket's error responder returns a TL-UL error response.
+- `SoCChiselConfig` lists Chisel instances, their host/device TL-UL port names, and top-level non-TL ports.
+- `CrossbarConfig` lists TL-UL hosts, devices, address ranges, widths, clock domains, and allowed host-to-device connectivity.
+- `CoralNPUXbar` wraps each host and device with TL-UL integrity generation and checking, inserts `TlulFifoAsync` for non-main clock domains, and inserts `TlulWidthBridge` when a port is narrower than the 128-bit common fabric.
+- Each host gets a `TlulSocket1N`; each multi-host target gets a `TlulSocketM1`. Address decode selects the target device, otherwise the socket's error responder returns a TL-UL error response.
 
-The normal SoC hosts are the CoralNPU core, SPI-to-TL bridge, DMA engine, and two
-ISP AXI master ports. The normal internal targets include the core device port,
-SRAM, DMA CSR block, SPI masters, GPIO, CLINT, and PLIC. ROM, UART, I2C, and
-clock-table devices are exposed as external TL-UL ports. DDR and ISP are handled
-with explicit bridge wiring in the subsystem because their external interfaces
-are not simple same-width same-domain TL-UL ports.
+The normal SoC hosts are the CoralNPU core, SPI-to-TL bridge, DMA engine, and two ISP AXI master ports. The normal internal targets include the core device port, SRAM, DMA CSR block, SPI masters, GPIO, CLINT, and PLIC. ROM, UART, I2C, and clock-table devices are exposed as external TL-UL ports. DDR and ISP are handled with explicit bridge wiring in the subsystem because their external interfaces are not simple same-width same-domain TL-UL ports.
 
 ### 3. Core local memory and external memory paths
 
 `CoreTlul` is a TL-UL shell around `CoreAxi`.
 
-- The core's outgoing AXI master is converted to TL-UL by `Axi2TLUL` and becomes
-  xbar host `coralnpu_core`.
-- The xbar's `coralnpu_device` TL-UL target is converted back to AXI by
-  `TLUL2Axi` and enters `CoreAxi` as an AXI slave.
-- `CoreAxi` converts that AXI slave traffic into a simple `FabricIO` command
-  stream with `AxiSlave`.
+- The core's outgoing AXI master is converted to TL-UL by `Axi2TLUL` and becomes xbar host `coralnpu_core`.
+- The xbar's `coralnpu_device` TL-UL target is converted back to AXI by `TLUL2Axi` and enters `CoreAxi` as an AXI slave.
+- `CoreAxi` converts that AXI slave traffic into a simple `FabricIO` command stream with `AxiSlave`.
 
 Inside `CoreAxi`, ITCM, DTCM, and CoreCSR share a small local fabric:
 
@@ -287,68 +258,39 @@ Inside `CoreAxi`, ITCM, DTCM, and CoreCSR share a small local fabric:
 | External host access to core-local regions | xbar `coralnpu_device` | `AxiSlave` -> `FabricMux` | Load code/data into TCM, read status, access CoreCSR/debug |
 | Debug memory access | `DebugModule` | ITCM/DTCM arbiter source 2 | Abstract debug memory/register access |
 
-The ITCM and DTCM arbiters have three sources: the scalar core, the external
-fabric/AXI slave path, and the debug module. `FabricMux` decodes local fabric
-transactions against the configured memory regions and forwards them to ITCM,
-DTCM, or CoreCSR.
+The ITCM and DTCM arbiters have three sources: the scalar core, the external fabric/AXI slave path, and the debug module. `FabricMux` decodes local fabric transactions against the configured memory regions and forwards them to ITCM, DTCM, or CoreCSR.
 
 ### 4. Scalar pipeline
 
-The scalar core (`SCore`) is a 4-lane in-order RISC-V pipeline with decoupled
-multi-cycle units. In the current SoC config, `enableFetchL0 = false`, so
-`UncachedFetch` is used. The optional `Fetch` implementation contains a 1 KiB
-L0 instruction cache and branch predecode, but it currently asserts a 256-bit
-fetch width; the SoC config uses 128-bit fetches through `UncachedFetch`.
+The scalar core (`SCore`) is a 4-lane in-order RISC-V pipeline with decoupled multi-cycle units. In the current SoC config, `enableFetchL0 = false`, so `UncachedFetch` is used. The optional `Fetch` implementation contains a 1 KiB L0 instruction cache and branch predecode, but it currently asserts a 256-bit fetch width; the SoC config uses 128-bit fetches through `UncachedFetch`.
 
 The main pipeline stages are:
 
-1. **Fetch:** fetch control produces sequential, branch, debug-PC, and fence.i
-   target addresses; `InstructionBuffer` presents up to four instructions to
-   dispatch.
-2. **Dispatch:** `DispatchV2` decodes all four lanes, checks scalar/FP/RVV
-   scoreboards, resource queue capacity, branch/jump ordering, CSR ordering,
-   fence, single-step, WFI/mpause, and retirement-buffer space.
-3. **Execute/writeback:** one-cycle ALU/BRU/CSR operations write back through
-   lane write ports; multi-cycle MLU/DVU/LSU/FP/RVV/debug writebacks arbitrate
-   through extra scalar write ports or the FP/vector paths.
-4. **Retirement/trap ordering:** `RetirementBuffer` tracks dispatched
-   instructions, stores, scalar/FP/vector write completions, control-flow
-   continuity, and faults so retired debug/RVVI information is in program order.
+1. **Fetch:** fetch control produces sequential, branch, debug-PC, and fence.i target addresses; `InstructionBuffer` presents up to four instructions to dispatch.
+2. **Dispatch:** `DispatchV2` decodes all four lanes, checks scalar/FP/RVV scoreboards, resource queue capacity, branch/jump ordering, CSR ordering, fence, single-step, WFI/mpause, and retirement-buffer space.
+3. **Execute/writeback:** one-cycle ALU/BRU/CSR operations write back through lane write ports; multi-cycle MLU/DVU/LSU/FP/RVV/debug writebacks arbitrate through extra scalar write ports or the FP/vector paths.
+4. **Retirement/trap ordering:** `RetirementBuffer` tracks dispatched instructions, stores, scalar/FP/vector write completions, control-flow continuity, and faults so retired debug/RVVI information is in program order.
 
-Dispatch is conservative: a lane fires only if every earlier lane that should
-dispatch has fired, all scoreboards are clear for the instruction's operands,
-the target unit accepts the command, and no trap is pending. CSRs wait for an
-empty retirement buffer. Special operations that are only implemented in slot 0
-are blocked in other lanes.
+Dispatch is conservative: a lane fires only if every earlier lane that should dispatch has fired, all scoreboards are clear for the instruction's operands, the target unit accepts the command, and no trap is pending. CSRs wait for an empty retirement buffer. Special operations that are only implemented in slot 0 are blocked in other lanes.
 
 ### 5. Control flow, exceptions, and interrupts
 
-Each lane has a branch unit, but lane 0 also owns machine-level control effects.
-The first BRU handles ECALL, EBREAK, MRET, WFI, faults, and asynchronous
-interrupt redirection. It updates CSR state through `CsrBruIO`, writes `mepc`,
-`mcause`, and `mtval`, and provides the fetch redirect target.
+Each lane has a branch unit, but lane 0 also owns machine-level control effects. The first BRU handles ECALL, EBREAK, MRET, WFI, faults, and asynchronous interrupt redirection. It updates CSR state through `CsrBruIO`, writes `mepc`, `mcause`, and `mtval`, and provides the fetch redirect target.
 
 `FaultManager` merges:
 
-- decode faults such as illegal CSR, undefined instruction, bad JAL/JALR/Bxx
-  alignment, and RVV dispatch faults;
+- decode faults such as illegal CSR, undefined instruction, bad JAL/JALR/Bxx alignment, and RVV dispatch faults;
 - instruction access faults from fetch;
 - load/store faults from the LSU/external bus;
 - asynchronous RVV traps from the RVV core.
 
-CLINT `mtip` and `msip` are wired directly to the core timer and software IRQ
-inputs. PLIC output is wired to the core external IRQ input. `CoreAxi` registers
-these IRQ inputs at the core boundary to reduce timing pressure into instruction
-fetch and uses them to wake the clock-gated core.
+CLINT `mtip` and `msip` are wired directly to the core timer and software IRQ inputs. PLIC output is wired to the core external IRQ input. `CoreAxi` registers these IRQ inputs at the core boundary to reduce timing pressure into instruction fetch and uses them to wake the clock-gated core.
 
 ### 6. Load/store operation
 
-`LsuV2` accepts up to four dispatch requests per cycle into a four-entry
-multi-enqueue circular buffer, but executes a single active slot at a time. A
-slot can describe scalar, floating-point, or RVV load/store work.
+`LsuV2` accepts up to four dispatch requests per cycle into a four-entry multi-enqueue circular buffer, but executes a single active slot at a time. A slot can describe scalar, floating-point, or RVV load/store work.
 
-For each transaction, the LSU computes the target line, classifies the address
-against the configured memory regions, and selects exactly one bus:
+For each transaction, the LSU computes the target line, classifies the address against the configured memory regions, and selects exactly one bus:
 
 | Region classification | LSU bus | Behavior |
 | --- | --- | --- |
@@ -357,31 +299,15 @@ against the configured memory regions, and selects exactly one bus:
 | Core peripheral (`Peripheral`) | `ebus` with `internal = true` | CoreCSR/internal peripheral access |
 | Outside local regions | `ebus` with `internal = false` | External system memory/peripheral access through AXI/TL-UL |
 
-Scalar loads sign/zero-extend and write the scalar regfile. FP loads return
-through the FP load write port. Vector loads/stores exchange data with the RVV
-core through `lsu2rvv` and `rvv2lsu`, and vector stores report completion to the
-retirement buffer when the RVV handshake marks the last micro-op.
+Scalar loads sign/zero-extend and write the scalar regfile. FP loads return through the FP load write port. Vector loads/stores exchange data with the RVV core through `lsu2rvv` and `rvv2lsu`, and vector stores report completion to the retirement buffer when the RVV handshake marks the last micro-op.
 
-Fence and flush operations are represented as LSU commands. `fence.i` drives
-the instruction flush path and a next PC; data flush commands drive the external
-`dflush` interface. In `CoreAxi` these flush-ready signals are tied high because
-the local TCM path has no cache to flush.
+Fence and flush operations are represented as LSU commands. `fence.i` drives the instruction flush path and a next PC; data flush commands drive the external `dflush` interface. In `CoreAxi` these flush-ready signals are tied high because the local TCM path has no cache to flush.
 
 ### 7. FP and RVV extensions
 
-When enabled, the FP path consists of an `FRegfile`, `FloatCore`, CSR FP flags
-and rounding mode, and LSU FP load/store integration. `FloatCore` wraps the
-CVFPU `fpnew_top` RV32F implementation and maps decoded RISC-V FP operations
-to FPNEW operation, modifier, rounding, operands, result, and status signals.
-The FP register file has three read ports and two write ports; the second write
-port arbitrates LSU FP loads and RVV scalar-FP writeback.
+When enabled, the FP path consists of an `FRegfile`, `FloatCore`, CSR FP flags and rounding mode, and LSU FP load/store integration. `FloatCore` wraps the CVFPU `fpnew_top` RV32F implementation and maps decoded RISC-V FP operations to FPNEW operation, modifier, rounding, operands, result, and status signals. The FP register file has three read ports and two write ports; the second write port arbitrates LSU FP loads and RVV scalar-FP writeback.
 
-When enabled, RVV is wrapped by `RvvCoreShim`. The scalar dispatch stage sends
-compressed RVV instructions on four decoupled lanes. The shim exposes scalar
-source operands, vector load/store handshakes, asynchronous scalar and FP
-writebacks, trap output, queue capacity, and RVV CSR/config state. The shim also
-keeps `vstart`, `vxrm`, and `vxsat` coherent between CSR writes and updates
-reported by the RVV core.
+When enabled, RVV is wrapped by `RvvCoreShim`. The scalar dispatch stage sends compressed RVV instructions on four decoupled lanes. The shim exposes scalar source operands, vector load/store handshakes, asynchronous scalar and FP writebacks, trap output, queue capacity, and RVV CSR/config state. The shim also keeps `vstart`, `vxrm`, and `vxsat` coherent between CSR writes and updates reported by the RVV core.
 
 ### 8. Peripheral behavior
 
@@ -411,14 +337,8 @@ reported by the RVV core.
 
 ## Important Configuration Notes
 
-- Default core-local regions are 8 KiB ITCM at `0x00000000`, 32 KiB DTCM at
-  `0x00010000`, and a 4 KiB core peripheral/CSR window at `0x00030000`.
-- Custom ITCM/DTCM sizes move DTCM to `0x00100000` and the core CSR window to
-  `0x00200000` to leave room for up to 1 MiB local memories.
-- The SoC core instance enables RVV and FP, uses 128-bit TL-UL/LSU/fetch data
-  paths, and disables the L0 fetch cache.
-- The common crossbar fabric is 128-bit TL-UL. Narrow hosts/devices are bridged;
-  DDR memory is widened to a 256-bit AXI port after the xbar.
-- `enableVerification` controls `useRetirementBuffer`; when false, the
-  retirement buffer is built in mini mode but still supplies ordering/trap
-  control signals needed by dispatch and debug.
+- Default core-local regions are 8 KiB ITCM at `0x00000000`, 32 KiB DTCM at `0x00010000`, and a 4 KiB core peripheral/CSR window at `0x00030000`.
+- Custom ITCM/DTCM sizes move DTCM to `0x00100000` and the core CSR window to `0x00200000` to leave room for up to 1 MiB local memories.
+- The SoC core instance enables RVV and FP, uses 128-bit TL-UL/LSU/fetch data paths, and disables the L0 fetch cache.
+- The common crossbar fabric is 128-bit TL-UL. Narrow hosts/devices are bridged; DDR memory is widened to a 256-bit AXI port after the xbar.
+- `enableVerification` controls `useRetirementBuffer`; when false, the retirement buffer is built in mini mode but still supplies ordering/trap control signals needed by dispatch and debug.
